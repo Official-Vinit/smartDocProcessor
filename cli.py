@@ -18,7 +18,7 @@ def main():
 if __name__ == "__main__":
     # Ensure API key is present
     import os
-    if "GOOGLE_API_KEY" not in os.environ:
+    if "GEMINI_API_KEY" not in os.environ:
         print('{"processing_errors": ["GOOGLE_API_KEY environment variable not set"]}')
         sys.exit(1)
         
