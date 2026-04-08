@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Document Extraction</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for the JSON output */
+        pre::-webkit-scrollbar { width: 8px; height: 8px; }
+        pre::-webkit-scrollbar-thumb { background: #4B5563; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen p-8">
+
+    <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+        
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-fit">
+            <h1 class="text-2xl font-bold mb-2">Document OCR Processor</h1>
+            <p class="text-gray-500 mb-6 text-sm">Upload a PDF or image. The system will classify it and extract structured data.</p>
+            
+            <form id="uploadForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Document ID (Optional)</label>
+                    <input type="text" id="documentId" name="document_id" placeholder="e.g., DOC-12345" 
+                           class="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">File to Process</label>
+                    <input type="file" id="fileInput" name="file" accept=".pdf,.png,.jpg,.jpeg" required
+                           class="w-full border border-gray-300 rounded-lg p-2 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                </div>
+
+                <button type="submit" id="submitBtn" 
+                        class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition flex justify-center items-center">
+                    <span>Extract Document</span>
+                    <svg id="spinner" class="animate-spin ml-2 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </button>
+            </form>
+            
+            <div id="errorBox" class="mt-4 p-3 bg-red-50 text-red-700 rounded-lg hidden text-sm font-medium"></div>
+        </div>
+
+        <div class="bg-gray-900 rounded-xl shadow-sm border border-gray-800 flex flex-col h-[600px]">
+            <div class="bg-gray-800 px-4 py-2 rounded-t-xl border-b border-gray-700 flex justify-between items-center">
+                <span class="text-gray-300 font-mono text-sm">Response JSON</span>
+            </div>
+            <div class="p-4 overflow-auto flex-grow">
+                <pre id="jsonOutput" class="text-green-400 font-mono text-sm whitespace-pre-wrap word-break">Waiting for upload...</pre>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const form = e.target;
+            const submitBtn = document.getElementById('submitBtn');
+            const spinner = document.getElementById('spinner');
+            const jsonOutput = document.getElementById('jsonOutput');
+            const errorBox = document.getElementById('errorBox');
+            
+            // UI State: Loading
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-75');
+            spinner.classList.remove('hidden');
+            errorBox.classList.add('hidden');
+            jsonOutput.textContent = "Processing with Gemini 2.5 Flash...\nThis usually takes 5-10 seconds depending on document length.";
+            jsonOutput.classList.remove('text-red-400');
+            jsonOutput.classList.add('text-green-400');
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/api/extract', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Server responded with an error.');
+                }
+
+                // Success: Format and display JSON
+                jsonOutput.textContent = JSON.stringify(data, null, 2);
+
+            } catch (error) {
+                // Error handling
+                errorBox.textContent = error.message;
+                errorBox.classList.remove('hidden');
+                jsonOutput.textContent = "Process failed.";
+                jsonOutput.classList.remove('text-green-400');
+                jsonOutput.classList.add('text-red-400');
+            } finally {
+                // UI State: Reset
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-75');
+                spinner.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
