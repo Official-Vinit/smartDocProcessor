@@ -1,6 +1,7 @@
 import os
 import uuid
 import traceback
+import time
 from typing import List
 from PIL import Image
 from pdf2image import convert_from_path
@@ -12,7 +13,6 @@ class DocumentProcessor:
     def __init__(self):
         # Requires GOOGLE_API_KEY environment variable to be set
         self.client = genai.Client()
-        # Using 1.5 Pro as it is best-in-class for complex document reasoning
         self.model_name = "gemini-2.5-flash" 
 
     def _prepare_document(self, file_path: str) -> List[Image.Image]:
@@ -30,7 +30,6 @@ class DocumentProcessor:
             raise ValueError(f"Unsupported file type: {ext}")
 
     def process(self, file_path: str) -> DocumentResponse:
-        """Main invokable function that returns the required JSON structure."""
         doc_id = str(uuid.uuid4())
         
         try:
@@ -45,18 +44,37 @@ class DocumentProcessor:
             5. Flag any physical issues with the document (e.g., 'faded stamp', 'rotated', 'mixed languages') in the 'flags' array.
             """
 
-            # Combine the text prompt with the image array
             contents = [prompt] + images
 
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=DocumentResponse,
-                    temperature=0.1 # Low temp for factual extraction
-                ),
-            )
+            # --- NEW: Retry Logic with Exponential Backoff ---
+            max_retries = 3
+            response = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=DocumentResponse,
+                            temperature=0.1
+                        ),
+                    )
+                    break  # Success! Break out of the retry loop
+                    
+                except Exception as api_e:
+                    # If it's a 503 (Unavailable) or 429 (Too Many Requests), we retry
+                    if "503" in str(api_e) or "429" in str(api_e):
+                        if attempt < max_retries - 1:
+                            sleep_time = 2 ** attempt  # 1s, 2s, 4s...
+                            print(f"Server busy. Retrying in {sleep_time} seconds... (Attempt {attempt + 1}/{max_retries})")
+                            time.sleep(sleep_time)
+                            continue
+                    
+                    # If it's a different error, or we ran out of retries, raise it to the outer try/catch
+                    raise api_e
+            # -------------------------------------------------
 
             # Parse the LLM's JSON output back into our Pydantic model
             result = DocumentResponse.model_validate_json(response.text)
@@ -64,7 +82,6 @@ class DocumentProcessor:
             return result
 
         except Exception as e:
-            # Graceful failure handling: Return the schema with errors populated
             return DocumentResponse(
                 document_id=doc_id,
                 category="Unknown",
